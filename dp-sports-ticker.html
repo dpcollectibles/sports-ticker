@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DP Sports Wire — Live Ticker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500&display=swap');
+
+  :root {
+    --bg-dark: #0c0c0c;
+    --bg-darker: #000000;
+    --red: #c8102e;
+    --red-dim: #7a0a1c;
+    --white: #f2f2f2;
+    --grey: #8a8a8a;
+    --mlb: #e0435c;
+    --nfl: #6f93d9;
+    --nba: #f58426;
+    --nhl: #6cace4;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    height: 100%;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .ticker-bar {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    height: 76px;
+    background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+    border-top: 3px solid var(--red);
+    box-shadow: 0 -4px 14px rgba(0,0,0,0.35);
+    box-sizing: border-box;
+  }
+
+  .badge {
+    flex: 0 0 208px;
+    background: linear-gradient(135deg, var(--red) 0%, var(--red-dim) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 18px;
+    position: relative;
+    box-sizing: border-box;
+  }
+
+  .badge .title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 21px;
+    color: var(--white);
+    letter-spacing: 0.5px;
+    line-height: 1.1;
+  }
+
+  .badge .sub {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 500;
+    font-size: 12px;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 1.5px;
+    margin-top: 2px;
+  }
+
+  .live-dot {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 0 6px 2px rgba(255,255,255,0.6);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+
+  .ticker-track {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+  }
+
+  .ticker-content {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    will-change: transform;
+    animation: scroll linear infinite;
+  }
+
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    padding: 0 26px;
+  }
+
+  .tag {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin-right: 12px;
+    color: #0c0c0c;
+    flex-shrink: 0;
+  }
+
+  .tag.mlb { background: var(--mlb); }
+  .tag.nfl { background: var(--nfl); }
+  .tag.nba { background: var(--nba); }
+  .tag.nhl { background: var(--nhl); }
+
+  .headline {
+    font-size: 19px;
+    font-weight: 400;
+    color: var(--white);
+  }
+
+  .dot-sep {
+    color: var(--grey);
+    margin-left: 26px;
+    font-size: 14px;
+  }
+
+  .status {
+    font-size: 15px;
+    color: var(--grey);
+    padding: 0 26px;
+  }
+</style>
+</head>
+<body>
+
+<div class="ticker-bar">
+  <div class="badge">
+    <div class="title">DP SPORTS</div>
+    <div class="sub">WIRE</div>
+    <div class="live-dot"></div>
+  </div>
+  <div class="ticker-track">
+    <div class="ticker-content" id="tickerContent">
+      <div class="item"><span class="status">Loading latest headlines…</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const LEAGUES = [
+    { id: 'mlb', label: 'MLB', cls: 'mlb', url: 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/news' },
+    { id: 'nfl', label: 'NFL', cls: 'nfl', url: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/news' },
+    { id: 'nba', label: 'NBA', cls: 'nba', url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news' },
+    { id: 'nhl', label: 'NHL', cls: 'nhl', url: 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/news' }
+  ];
+
+  const PER_LEAGUE = 5;
+  const SPEED_PX_PER_SEC = 90;
+  const REFRESH_MS = 5 * 60 * 1000;
+
+  const content = document.getElementById('tickerContent');
+
+  async function fetchLeague(league) {
+    try {
+      const res = await fetch(league.url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad status');
+      const data = await res.json();
+      const articles = (data.articles || []).slice(0, PER_LEAGUE);
+      return articles.map(a => ({ league, text: a.headline || a.description || '' }))
+                     .filter(x => x.text);
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function interleave(lists) {
+    const out = [];
+    const max = Math.max(0, ...lists.map(l => l.length));
+    for (let i = 0; i < max; i++) {
+      for (const list of lists) {
+        if (list[i]) out.push(list[i]);
+      }
+    }
+    return out;
+  }
+
+  function buildItemNode(entry) {
+    const wrap = document.createElement('span');
+    wrap.className = 'item';
+
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + entry.league.cls;
+    tag.textContent = entry.league.label;
+
+    const headline = document.createElement('span');
+    headline.className = 'headline';
+    headline.textContent = entry.text;
+
+    const sep = document.createElement('span');
+    sep.className = 'dot-sep';
+    sep.textContent = '•';
+
+    wrap.appendChild(tag);
+    wrap.appendChild(headline);
+    wrap.appendChild(sep);
+    return wrap;
+  }
+
+  function render(items) {
+    content.innerHTML = '';
+    content.style.animation = 'none';
+
+    if (items.length === 0) {
+      const wrap = document.createElement('span');
+      wrap.className = 'item';
+      wrap.innerHTML = '<span class="status">Sports headlines unavailable — check network connection</span>';
+      content.appendChild(wrap);
+      return;
+    }
+
+    // duplicate the list once so the loop is seamless
+    [...items, ...items].forEach(entry => content.appendChild(buildItemNode(entry)));
+
+    // measure and set a constant scroll speed regardless of content length
+    requestAnimationFrame(() => {
+      const fullWidth = content.scrollWidth / 2;
+      const duration = fullWidth / SPEED_PX_PER_SEC;
+      content.style.animation = `scroll ${duration}s linear infinite`;
+    });
+  }
+
+  async function refresh() {
+    const results = await Promise.all(LEAGUES.map(fetchLeague));
+    const items = interleave(results);
+    render(items);
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+</script>
+
+</body>
+</html>
